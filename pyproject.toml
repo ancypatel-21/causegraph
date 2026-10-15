@@ -1,0 +1,61 @@
+[project]
+name = "causegraph"
+version = "0.1.0"
+description = "Graph-guided causal root-cause analysis for distributed ML systems"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "redis>=5.0",
+    "aiokafka>=0.11",
+    "httpx>=0.27",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+    "prometheus-client>=0.20",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "numpy>=1.26",
+    "tenacity>=9.0",
+]
+
+[project.scripts]
+causegraph-cli = "benchmark.evaluator.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "black>=24.8",
+]
+# Only needed for CAUSEGRAPH_LLM_PROVIDER=anthropic (causegraph/llm/provider.py).
+# The default "mock" provider needs nothing beyond the base dependencies,
+# per spec section 14 step 18.
+llm = [
+    "anthropic>=0.40",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["causegraph*", "benchmark*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

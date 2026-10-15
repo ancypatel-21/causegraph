@@ -1,0 +1,26 @@
+global:
+  # Short interval so a 45-60s benchmark scenario still produces enough
+  # samples for the anomaly engine's baseline window. See
+  # benchmark/evaluator/evaluator.py and docs/adr/0002-telemetry-stack.md.
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: event-api
+    static_configs:
+      - targets: ["event-api:8001"]
+  - job_name: feature-worker
+    static_configs:
+      - targets: ["feature-worker:8002"]
+  - job_name: model-service
+    static_configs:
+      - targets: ["model-service:8003"]
+  - job_name: ranking-api
+    static_configs:
+      - targets: ["ranking-api:8004"]
+  - job_name: quality-monitor
+    static_configs:
+      - targets: ["quality-monitor:8005"]
+  - job_name: causegraph-api
+    static_configs:
+      - targets: ["causegraph-api:8000"]

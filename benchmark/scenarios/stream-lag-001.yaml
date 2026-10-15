@@ -1,0 +1,10 @@
+id: stream-lag-001
+seed: 42
+root_cause: event-stream
+fault: consumer_lag
+inject_at_seconds: 45
+symptom_nodes: [feature-worker, model-service, quality-monitor]
+expected_path: [event-stream, feature-worker, feature-store, model-service]
+cleanup: resume_consumer
+severity: medium
+labels: [streaming, queue, cascading]

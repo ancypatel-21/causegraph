@@ -1,0 +1,10 @@
+id: ml-latency-001
+seed: 42
+root_cause: model-service
+fault: latency
+inject_at_seconds: 45
+symptom_nodes: [ranking-api, quality-monitor]
+expected_path: [model-service, ranking-api]
+cleanup: restore_latency
+severity: medium
+labels: [ml, latency]

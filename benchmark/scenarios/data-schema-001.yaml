@@ -1,0 +1,10 @@
+id: data-schema-001
+seed: 42
+root_cause: feature-worker
+fault: incompatible_schema
+inject_at_seconds: 45
+symptom_nodes: [model-service, ranking-api, quality-monitor]
+expected_path: [feature-worker, feature-store, model-service, ranking-api]
+cleanup: restore_schema
+severity: medium
+labels: [data, schema, cascading]
