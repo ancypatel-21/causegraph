@@ -89,6 +89,23 @@ and candidate budget" is the existing `depth`/`top_k` parameters — neither
 needed a new mechanism. See `docs/research-protocol.md` for real results
 and what they show.
 
+## Calibration study (spec section 9.3)
+
+```bash
+docker compose -f infra/compose/docker-compose.yml run --rm benchmark-cli \
+  run-calibration --method causegraph --n-runs-per-scenario 3
+```
+
+Runs every scenario `n-runs-per-scenario` times, each with a different
+seed (`scenario.seed + 0, +1, +2, ...` — `run_scenario`'s `seed`
+parameter overrides the manifest's canonical seed for exactly this),
+pools every run's (confidence, correctness) pair across all scenarios
+and seeds, and reports Brier score + Expected Calibration Error
+(`causegraph/calibration.py`). Confidence is a softmax over the returned
+hypotheses' scores, so it's available for every method, not just when
+agent synthesis runs. See `docs/research-protocol.md` for a real result
+and how much (or little) data it rests on.
+
 ## Scenarios
 
 | id | fault | root cause | owner service | split |

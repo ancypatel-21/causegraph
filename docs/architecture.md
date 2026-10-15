@@ -232,6 +232,15 @@ honest limitation the ablations surfaced (the X contradicting-evidence
 term actively fights the change-event term on quiet-root-cause
 scenarios), not just the wins.
 
+**Calibration** (spec section 9.3, and "confidence/calibration is
+measured, not cosmetic" from the full-project acceptance checklist,
+section 23) is also real: `causegraph/calibration.py` has pure Brier
+score / ECE functions; `run_calibration_study` runs every scenario with
+multiple seeds (`run_scenario`'s new `seed` override, spec section 9.4)
+and pools the results. 10 live runs gave Brier=0.15, ECE=0.07 — a
+genuine first measurement, explicitly reported alongside how little data
+it rests on, in `docs/research-protocol.md`.
+
 ## Policy-gated remediation (Phase 10)
 
 `causegraph/remediation/` implements spec sections 10-11: "The LLM

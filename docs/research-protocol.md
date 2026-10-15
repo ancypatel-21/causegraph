@@ -48,6 +48,16 @@ is (and is not yet) satisfied as of Phase 9.
   failures.
 - **Ablation studies were actually run**, not just scaffolded — results
   below, including a negative one.
+- **Calibration is measured, not cosmetic** (spec section 9.3 and the
+  full-project acceptance checklist, spec section 23): real Brier score
+  and ECE computed from 10 live runs (`benchmark/evaluator/evaluator.py:
+  run_calibration_study`, pure math in `causegraph/calibration.py`) —
+  see below.
+- **Repeated runs with multiple seeds exist**, per spec section 9.4 —
+  `run_scenario`'s `seed` parameter overrides the scenario manifest's
+  canonical seed so repeats vary the workload instead of replaying it
+  identically. Still only 2 seeds per scenario so far (see the caveat
+  below) — a step in this direction, not the full discipline yet.
 
 ## Real findings (Phase 9, one run each — see caveat below)
 
@@ -118,6 +128,39 @@ term is uniformly good or bad — their value is scenario-dependent**, which
 is itself evidence that 3-5 scenarios aren't enough to responsibly tune
 anything yet (see below).
 
+### Calibration (spec section 9.3): is `causegraph`'s confidence trustworthy?
+
+`run-calibration --method causegraph` (default settings: all 5 scenarios,
+2 seeds each = 10 live runs). Confidence is a softmax over the returned
+hypotheses' scores (`_softmax_top1_confidence` in
+`benchmark/evaluator/evaluator.py`) — available for every method, not
+only when agent synthesis runs.
+
+```
+method=causegraph  n_runs=10  n_scored_pairs=10
+brier_score=0.1506  expected_calibration_error=0.0742
+
+bin          n   avg_confidence  accuracy
+[0.0, 0.2]   0   -               -
+[0.2, 0.4]   0   -               -
+[0.4, 0.6]   3   0.45            0.33
+[0.6, 0.8]   3   0.66            0.67
+[0.8, 1.0]   4   0.91            1.00
+```
+
+Reading this honestly: a Brier score of 0.15 and ECE of 0.07 are
+reasonable — genuinely better than "cosmetic," which is the bar spec
+section 23 sets. The `[0.6, 0.8]` bin is close to perfectly calibrated
+(66% confidence, 67% actual accuracy). The `[0.8, 1.0]` bin is
+*underconfident* (91% confidence, 100% accuracy) — the safer direction
+to be wrong in. The `[0.4, 0.6]` bin is mildly overconfident (45% vs
+33%). None of this should be over-read: **3-4 samples per bin is not
+enough to trust the per-bin numbers**, only the aggregate Brier
+score/ECE, and even those come from just 10 runs total. This is a
+genuine first measurement, not a mature calibration claim — the
+honest version of "measured, not cosmetic" is reporting the number
+*and* saying plainly how little data it rests on.
+
 ### Caveat that applies to every table above
 
 These are **one live run each**, not repeated trials — the system has
@@ -137,9 +180,11 @@ quantitative claim, which is the next item below.
   them — doing so now would mean tuning 7 weights against evidence from
   essentially 3 dev data points, which is overfitting dressed up as
   measurement. This needs materially more scenarios first.
-- **Confidence intervals / repeated runs with multiple seeds**: still not
-  done. Every result above is explicitly flagged as a single run for
-  exactly this reason.
+- **Confidence intervals**: still not done. The comparison/ablation
+  tables above are each a single run; only the calibration study used
+  repeated runs (2 seeds), and even that is too few to report a
+  confidence interval on the Brier score/ECE themselves, just the point
+  estimate.
 - **Path-accuracy scoring**: scenario manifests declare `expected_path`,
   but only root-cause rank (top-1/top-3/MRR) is scored today; whether a
   method's `causal_path` matches the expected propagation chain is not

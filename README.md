@@ -16,12 +16,14 @@ validation, a bounded investigator agent with a provider-neutral LLM
 adapter (mock by default, no API key needed), real ablation studies run
 against the held-out scenarios — including an honestly-reported
 limitation the ablations surfaced, not just the wins (see
-`docs/research-protocol.md`) — and a policy-gated remediation layer
-(propose → approve → execute → rollback, with an allow-list, idempotency
-keys, and audit logs, all verified live against the real stack). Not yet
-built: weight tuning (deliberately — not enough scenarios yet to do
-responsibly), publication artifacts (Phase 11), and the dashboard. See
-`docs/architecture.md` for the full breakdown.
+`docs/research-protocol.md`), real calibration measurement (Brier/ECE
+from repeated runs across seeds — spec section 9.3, reported honestly
+alongside how little data it rests on) — and a policy-gated remediation
+layer (propose → approve → execute → rollback, with an allow-list,
+idempotency keys, and audit logs, all verified live against the real
+stack). Not yet built: weight tuning (deliberately — not enough
+scenarios yet to do responsibly), publication artifacts (Phase 11), and
+the dashboard. See `docs/architecture.md` for the full breakdown.
 
 ## Quick start
 
@@ -49,6 +51,9 @@ docker compose -f infra/compose/docker-compose.yml run --rm benchmark-cli \
 
 docker compose -f infra/compose/docker-compose.yml run --rm benchmark-cli \
   run-ablations cache-ttl-001
+
+docker compose -f infra/compose/docker-compose.yml run --rm benchmark-cli \
+  run-calibration --method causegraph
 ```
 
 ```bash

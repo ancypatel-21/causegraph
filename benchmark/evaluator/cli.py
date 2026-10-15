@@ -89,6 +89,33 @@ def run_ablations_cmd(
         )
 
 
+@app.command("run-calibration")
+def run_calibration_cmd(
+    method: str = typer.Option("causegraph", help="RCA method to evaluate"),
+    scenarios: str = typer.Option("", help="comma-separated scenario ids; defaults to all"),
+    n_runs_per_scenario: int = typer.Option(3, help="repeated runs per scenario, varying seed"),
+    events_per_second: float = typer.Option(10.0, help="synthetic workload rate"),
+) -> None:
+    from benchmark.evaluator.evaluator import run_calibration_study
+
+    scenario_ids = [s.strip() for s in scenarios.split(",") if s.strip()] or None
+    result = run_calibration_study(
+        method=method,
+        scenario_ids=scenario_ids,
+        n_runs_per_scenario=n_runs_per_scenario,
+        events_per_second=events_per_second,
+    )
+
+    cal = result["calibration"]
+    typer.echo(f"method={result['method']} n_runs={result['n_runs']} n_scored_pairs={result['n_scored_pairs']}")
+    typer.echo(f"brier_score={cal.brier_score:.4f}  expected_calibration_error={cal.expected_calibration_error:.4f}")
+    typer.echo(f"{'bin':<12} {'n':<5} {'avg_confidence':<16} accuracy")
+    for b in cal.bin_details:
+        conf = f"{b['avg_confidence']:.2f}" if b.get("avg_confidence") is not None else "-"
+        acc = f"{b['accuracy']:.2f}" if b.get("accuracy") is not None else "-"
+        typer.echo(f"{str(b['range']):<12} {b['n']:<5} {conf:<16} {acc}")
+
+
 def main() -> None:
     app()
 

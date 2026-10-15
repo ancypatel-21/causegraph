@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from causegraph.agent import AgentTools, InvestigatorAgent
+from causegraph.calibration import CalibrationResult, expected_calibration_error
 from causegraph.graph import build_reference_topology
 from causegraph.persistence import (
     BenchmarkRunRepository,
@@ -70,6 +72,21 @@ def _rank_of(ranked_nodes: list[str], root_cause: str) -> int | None:
     return None
 
 
+def _softmax_top1_confidence(hypotheses: list) -> float | None:
+    """A confidence estimate every method can produce, not just the
+    agent: softmax over the returned (bounded, top-k) hypothesis scores.
+    Scores can be negative (e.g. the X penalty) -- softmax handles that
+    fine. This is what calibration (spec section 9.3) is measured
+    against when no AgentReport ran."""
+    if not hypotheses:
+        return None
+    scores = [h.score for h in hypotheses]
+    max_score = max(scores)
+    exp_scores = [math.exp(s - max_score) for s in scores]  # shifted for numerical stability
+    total = sum(exp_scores)
+    return exp_scores[0] / total if total else None
+
+
 def _write_result_file(run: BenchmarkRun, scenario: Scenario) -> Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = RESULTS_DIR / f"{run.scenario_id}__{run.id}.json"
@@ -88,20 +105,27 @@ async def _run_scenario_async(
     method: str = "graph_only",
     events_per_second: float = 10.0,
     method_override: object | None = None,
+    seed: int | None = None,
 ) -> BenchmarkRun:
     """`method` is always the label used for persistence (BenchmarkRun.method,
     result filename). `method_override`, if given, is used as the actual
     RCA method instance instead of looking `method` up in the registry --
     this is how ablation variants (spec section 9.2) run the exact same
     incident lifecycle as every other method without a separate code path.
+    `seed`, if given, overrides the scenario manifest's own seed for the
+    workload generator -- this is how repeated runs (spec section 9.4:
+    "repeated runs per scenario with multiple seeds") vary anything at
+    all between otherwise-identical runs, without touching the manifest's
+    canonical, reproducible default.
     """
     scenario = load_scenario(scenario_id)
+    run_seed = seed if seed is not None else scenario.seed
     started_at = datetime.now(timezone.utc)
-    logger.info(f"starting benchmark run for scenario={scenario_id} method={method}")
+    logger.info(f"starting benchmark run for scenario={scenario_id} method={method} seed={run_seed}")
 
     stop_event = asyncio.Event()
     workload_task = asyncio.create_task(
-        run_workload(scenario.seed, EVENT_API_URL, stop_event, events_per_second)
+        run_workload(run_seed, EVENT_API_URL, stop_event, events_per_second)
     )
 
     await asyncio.sleep(scenario.inject_at_seconds)
@@ -164,15 +188,19 @@ async def _run_scenario_async(
     stop_event.set()
     await workload_task
 
-    ranked_nodes = [h.candidate_node for h in sorted(hypotheses, key=lambda h: h.rank)]
+    sorted_hypotheses = sorted(hypotheses, key=lambda h: h.rank)
+    ranked_nodes = [h.candidate_node for h in sorted_hypotheses]
     rank_of_truth = _rank_of(ranked_nodes, scenario.root_cause)
+    top1_confidence = (
+        agent_report.confidence if agent_report else _softmax_top1_confidence(sorted_hypotheses)
+    )
     finished_at = datetime.now(timezone.utc)
 
     run = BenchmarkRun(
         git_sha=_git_sha(),
         scenario_id=scenario.id,
         scenario_version=scenario_version(scenario.id),
-        seed=scenario.seed,
+        seed=run_seed,
         workload_config={"events_per_second": events_per_second},
         method=method,
         method_config={
@@ -186,6 +214,7 @@ async def _run_scenario_async(
             "top3_accuracy": scenario.root_cause in ranked_nodes[:3],
             "mrr": (1.0 / rank_of_truth) if rank_of_truth else 0.0,
             "rank_of_ground_truth": rank_of_truth,
+            "top1_confidence": top1_confidence,
             "intervention_scores": intervention_scores,
             "time_to_diagnosis_seconds": (diagnosis_end - diagnosis_start).total_seconds(),
             "ranked_candidates": ranked_nodes,
@@ -204,9 +233,10 @@ def run_scenario(
     method: str = "graph_only",
     events_per_second: float = 10.0,
     method_override: object | None = None,
+    seed: int | None = None,
 ) -> BenchmarkRun:
     return asyncio.run(
-        _run_scenario_async(scenario_id, method, events_per_second, method_override)
+        _run_scenario_async(scenario_id, method, events_per_second, method_override, seed)
     )
 
 
@@ -256,3 +286,48 @@ def run_ablations(scenario_id: str, events_per_second: float = 10.0) -> dict[str
             method_override=method,
         )
     return results
+
+
+def run_calibration_study(
+    method: str = "causegraph",
+    scenario_ids: list[str] | None = None,
+    n_runs_per_scenario: int = 3,
+    events_per_second: float = 10.0,
+) -> dict:
+    """Spec section 9.3: "Calibration: Whether confidence tracks empirical
+    correctness (ECE/Brier score)." Spec section 9.4: "Use repeated runs
+    per scenario with multiple seeds where stochastic behavior exists."
+
+    Runs every scenario `n_runs_per_scenario` times, each with a
+    different seed (scenario.seed + 0, +1, +2, ...) so repeats aren't
+    just replaying the identical workload, pools every run's
+    (top1_confidence, top1_accuracy) pair across all scenarios and
+    seeds, and computes Brier score + ECE over the pool. Returns both
+    the aggregate `CalibrationResult` and every individual `BenchmarkRun`,
+    so the aggregate number is never the only thing anyone has to trust.
+    """
+    from benchmark.scenarios import list_scenario_ids
+
+    scenario_ids = scenario_ids or list_scenario_ids()
+    runs: list[BenchmarkRun] = []
+    pairs: list[tuple[float, bool]] = []
+
+    for scenario_id in scenario_ids:
+        scenario = load_scenario(scenario_id)
+        for i in range(n_runs_per_scenario):
+            seed = scenario.seed + i
+            logger.info(f"calibration study: scenario={scenario_id} seed={seed} method={method}")
+            run = run_scenario(scenario_id, method=method, events_per_second=events_per_second, seed=seed)
+            runs.append(run)
+            confidence = run.metrics.get("top1_confidence")
+            if confidence is not None:
+                pairs.append((confidence, bool(run.metrics.get("top1_accuracy"))))
+
+    result: CalibrationResult = expected_calibration_error(pairs)
+    return {
+        "method": method,
+        "n_runs": len(runs),
+        "n_scored_pairs": len(pairs),
+        "calibration": result,
+        "runs": runs,
+    }
