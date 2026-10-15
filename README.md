@@ -1,8 +1,11 @@
 # CauseGraph
 
-Graph-guided causal root-cause analysis for distributed ML systems. See
-`CauseGraph_Project_Specification.pdf` for the full research spec; this
-README covers what's implemented so far.
+Graph-guided causal root-cause analysis for distributed ML systems,
+built against a research specification covering an eleven-phase roadmap
+(reference application, telemetry, dependency graph, benchmark harness,
+baselines, causal validation, an investigator agent, held-out
+evaluation, remediation, and publication). This README and
+`docs/architecture.md` cover what's implemented so far.
 
 ## Status: through Phase 10 (the MVP line, spec section 13.1, plus remediation)
 
