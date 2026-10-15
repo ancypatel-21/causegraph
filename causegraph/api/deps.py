@@ -11,8 +11,10 @@ from causegraph.persistence import (
     EvidenceRepository,
     HypothesisRepository,
     IncidentRepository,
+    RemediationProposalRepository,
 )
 from causegraph.rca import GraphOnlyBaseline
+from causegraph.remediation import RemediationExecutor
 
 
 @lru_cache
@@ -48,3 +50,13 @@ def get_change_repo() -> ChangeEventRepository:
 @lru_cache
 def get_benchmark_run_repo() -> BenchmarkRunRepository:
     return BenchmarkRunRepository()
+
+
+@lru_cache
+def get_remediation_proposal_repo() -> RemediationProposalRepository:
+    return RemediationProposalRepository()
+
+
+@lru_cache
+def get_remediation_executor() -> RemediationExecutor:
+    return RemediationExecutor(repo=get_remediation_proposal_repo())

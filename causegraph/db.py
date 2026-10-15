@@ -92,6 +92,27 @@ class BenchmarkRunRow(Base):
     metrics = Column(JSON, nullable=False, default=dict)
 
 
+class RemediationProposalRow(Base):
+    __tablename__ = "remediation_proposals"
+
+    id = Column(String, primary_key=True)
+    incident_id = Column(String, nullable=False, index=True)
+    action_type = Column(String, nullable=False)
+    target = Column(String, nullable=False)
+    risk_tier = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="proposed", index=True)
+    idempotency_key = Column(String, nullable=False, unique=True, index=True)
+    reason = Column(String, nullable=False)
+    proposed_at = Column(DateTime, nullable=False)
+    approved_by = Column(String, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    rolled_back_at = Column(DateTime, nullable=True)
+    precondition_results = Column(JSON, nullable=False, default=dict)
+    post_action_health = Column(JSON, nullable=False, default=dict)
+    audit_log = Column(JSON, nullable=False, default=list)
+
+
 _engine = None
 _SessionFactory: sessionmaker | None = None
 

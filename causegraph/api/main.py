@@ -1,8 +1,8 @@
-"""Central causegraph-api service. Implements the "Suggested Internal APIs"
-from spec section 10 that Sprint 1 needs: incidents, hypotheses, evidence,
-graph neighbors, change events, and benchmark runs. The LLM agent and
-remediation endpoints are deliberately not implemented yet (spec section 14,
-steps 22-23).
+"""Central causegraph-api service. Implements the "Suggested Internal
+APIs" from spec section 10: incidents, hypotheses, evidence, graph
+neighbors, change events, benchmark runs, and (Phase 10) policy-gated
+remediation proposals. The LLM agent's own endpoints are not implemented
+here -- it runs inside the benchmark harness (causegraph/agent/).
 """
 
 from __future__ import annotations
@@ -22,10 +22,20 @@ from causegraph.api.deps import (
     get_hypothesis_repo,
     get_incident_repo,
     get_rca_baseline,
+    get_remediation_executor,
+    get_remediation_proposal_repo,
 )
 from causegraph.db import init_db
 from causegraph.graph.repository import Direction
-from causegraph.schemas import BenchmarkRun, ChangeEvent, Evidence, Hypothesis, Incident
+from causegraph.remediation import RemediationError
+from causegraph.schemas import (
+    BenchmarkRun,
+    ChangeEvent,
+    Evidence,
+    Hypothesis,
+    Incident,
+    RemediationProposal,
+)
 from causegraph.telemetry import get_logger, instrument_app
 from causegraph.telemetry.metrics import ServiceMetrics, mount_metrics
 
@@ -167,3 +177,59 @@ def get_benchmark_run(run_id: str) -> BenchmarkRun:
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
     return run
+
+
+# ---- Remediation (Phase 10, spec sections 10-11) ----------------------------
+
+
+class CreateRemediationProposalRequest(BaseModel):
+    incident_id: str
+    action_type: str
+    target: str
+
+
+@app.post("/remediation/proposals", response_model=RemediationProposal)
+def create_remediation_proposal(payload: CreateRemediationProposalRequest) -> RemediationProposal:
+    if get_incident_repo().get(payload.incident_id) is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    return get_remediation_executor().propose(
+        payload.incident_id, payload.action_type, payload.target
+    )
+
+
+@app.get("/remediation/proposals/{proposal_id}", response_model=RemediationProposal)
+def get_remediation_proposal(proposal_id: str) -> RemediationProposal:
+    proposal = get_remediation_proposal_repo().get(proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="remediation proposal not found")
+    return proposal
+
+
+class ApproveRemediationRequest(BaseModel):
+    approved_by: str
+
+
+@app.post("/remediation/proposals/{proposal_id}/approve", response_model=RemediationProposal)
+def approve_remediation_proposal(
+    proposal_id: str, payload: ApproveRemediationRequest
+) -> RemediationProposal:
+    try:
+        return get_remediation_executor().approve(proposal_id, payload.approved_by)
+    except RemediationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/remediation/proposals/{proposal_id}/execute", response_model=RemediationProposal)
+async def execute_remediation_proposal(proposal_id: str) -> RemediationProposal:
+    try:
+        return await get_remediation_executor().execute(proposal_id)
+    except RemediationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/remediation/proposals/{proposal_id}/rollback", response_model=RemediationProposal)
+async def rollback_remediation_proposal(proposal_id: str) -> RemediationProposal:
+    try:
+        return await get_remediation_executor().rollback(proposal_id)
+    except RemediationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

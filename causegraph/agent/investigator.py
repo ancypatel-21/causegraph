@@ -2,9 +2,10 @@
 omnipotent operator." It never re-ranks from scratch -- it takes the RCA
 engine's already-ranked Hypothesis/Evidence list (the source of truth,
 spec section 4.3), may call a couple of bounded tools to fill gaps, and
-writes the required structured conclusion (spec section 6.2). It never
-proposes an action more specific than "needs human approval" since the
-remediation policy engine (Phase 10) does not exist yet.
+writes the required structured conclusion (spec section 6.2). It
+recommends an action type, but recommending is all it does: executing it
+still goes through the policy engine and (for anything above low-risk) a
+human approval, per causegraph/remediation/.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from datetime import timedelta
 from causegraph.agent.tools import AgentTools
 from causegraph.llm import CandidateContext, LLMProvider, get_default_provider
 from causegraph.rca.node_signals import NODE_SIGNALS
+from causegraph.remediation import FAULT_TO_ACTION_TYPE
 from causegraph.schemas import (
     AgentReport,
     AlternativeHypothesis,
@@ -34,11 +36,14 @@ def _cause_type(node_id: str) -> str:
 
 
 def _recommend_action(node_id: str, incident: Incident) -> RecommendedAction:
-    # Spec section 11's risk tiers: anything beyond a low-risk restart is
-    # "require approval by default" -- this agent never claims more than a
-    # suggestion, so action_type is always something a human still has to
-    # execute (there is no remediation executor yet, Phase 10).
-    return RecommendedAction(action_type="rollback_deployment", target=node_id)
+    # Uses the same trigger_signal the benchmark harness already relies
+    # on to pick a fault injector -- here it picks a real, allow-listed
+    # action_type instead (causegraph/remediation/policy.py). Recommending
+    # it is all this does; whether it's actually allowed and whether it
+    # needs approval is decided by PolicyEngine.evaluate at execution
+    # time, not by the agent.
+    action_type = FAULT_TO_ACTION_TYPE.get(incident.trigger_signal, "manual_review")
+    return RecommendedAction(action_type=action_type, target=node_id)
 
 
 class InvestigatorAgent:

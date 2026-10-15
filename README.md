@@ -4,7 +4,7 @@ Graph-guided causal root-cause analysis for distributed ML systems. See
 `CauseGraph_Project_Specification.pdf` for the full research spec; this
 README covers what's implemented so far.
 
-## Status: through Phase 9
+## Status: through Phase 10 (the MVP line, spec section 13.1, plus remediation)
 
 Backend-only so far, per the spec's own Codex kickoff prompt (Phase 9+ adds
 a dashboard). Built: a real distributed reference application,
@@ -13,12 +13,15 @@ reproducible fault scenarios (3 dev, 2 held-out) with genuinely different
 fault mechanisms, all five required baselines (B0/B1/B2/B3/B4), the full
 CauseGraph scoring model (CG), live intervention/counterfactual
 validation, a bounded investigator agent with a provider-neutral LLM
-adapter (mock by default, no API key needed), and real ablation studies
-run against the held-out scenarios — including an honestly-reported
+adapter (mock by default, no API key needed), real ablation studies run
+against the held-out scenarios — including an honestly-reported
 limitation the ablations surfaced, not just the wins (see
-`docs/research-protocol.md`). Not yet built: weight tuning (deliberately
-— not enough scenarios yet to do responsibly), remediation (Phase 10),
-and the dashboard. See `docs/architecture.md` for the full breakdown.
+`docs/research-protocol.md`) — and a policy-gated remediation layer
+(propose → approve → execute → rollback, with an allow-list, idempotency
+keys, and audit logs, all verified live against the real stack). Not yet
+built: weight tuning (deliberately — not enough scenarios yet to do
+responsibly), publication artifacts (Phase 11), and the dashboard. See
+`docs/architecture.md` for the full breakdown.
 
 ## Quick start
 
@@ -54,6 +57,16 @@ make down     # tear the stack down
 make test     # unit tests (no live stack required)
 ```
 
+Propose, approve, and execute a remediation against a real diagnosed
+incident (spec sections 10-11):
+
+```bash
+curl -X POST localhost:18000/remediation/proposals -H 'Content-Type: application/json' \
+  -d '{"incident_id":"<id>","action_type":"restore_schema","target":"feature-worker"}'
+curl -X POST localhost:18000/remediation/proposals/<id>/approve -d '{"approved_by":"you"}'
+curl -X POST localhost:18000/remediation/proposals/<id>/execute
+```
+
 With the stack up, the full integration/e2e suite (which hits real
 services) can also run:
 
@@ -73,7 +86,8 @@ RUN_LIVE_STACK_TESTS=1 pytest tests/integration tests/e2e
   z-score anomaly detector, the graph-only baseline and the full
   CauseGraph scoring model, intervention-evidence math (`causal/`), the
   bounded investigator agent (`agent/`), the provider-neutral LLM adapter
-  (`llm/`), and the central `causegraph-api` service.
+  (`llm/`), the policy-gated remediation engine (`remediation/`), and the
+  central `causegraph-api` service.
 - **benchmark/** — scenario manifests, fault injectors, the seeded workload
   generator, all six RCA methods (`baselines/`), the live intervention-test
   orchestrator (`evaluator/intervention_runner.py`), and the evaluator

@@ -12,6 +12,9 @@ from causegraph.schemas.models import (
     Node,
     NodeType,
     RecommendedAction,
+    RemediationProposal,
+    RemediationStatus,
+    RiskTier,
     RootCause,
     Scenario,
 )
@@ -30,6 +33,9 @@ __all__ = [
     "Node",
     "NodeType",
     "RecommendedAction",
+    "RemediationProposal",
+    "RemediationStatus",
+    "RiskTier",
     "RootCause",
     "Scenario",
 ]

@@ -161,6 +161,51 @@ class AlternativeHypothesis(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class RiskTier(StrEnum):
+    """Spec section 11's three risk tiers. HIGH is never executable in
+    this project -- enforced by causegraph/remediation/policy.py, not
+    just documented here."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class RemediationStatus(StrEnum):
+    PROPOSED = "proposed"
+    REJECTED = "rejected"
+    APPROVED = "approved"
+    EXECUTED = "executed"
+    FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
+
+
+class RemediationProposal(BaseModel):
+    """Spec section 10's POST /remediation/proposals resource and section
+    11's safety model: "The LLM proposes a typed action; a deterministic
+    policy engine decides whether it is allowed and whether human
+    approval is required." Every field here is populated by the policy
+    engine or executor -- nothing here is ever set from free-form text.
+    """
+
+    id: str = Field(default_factory=lambda: _new_id("rem"))
+    incident_id: str
+    action_type: str
+    target: str
+    risk_tier: RiskTier
+    status: RemediationStatus = RemediationStatus.PROPOSED
+    idempotency_key: str
+    reason: str
+    proposed_at: datetime
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    executed_at: datetime | None = None
+    rolled_back_at: datetime | None = None
+    precondition_results: dict[str, Any] = Field(default_factory=dict)
+    post_action_health: dict[str, Any] = Field(default_factory=dict)
+    audit_log: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class AgentReport(BaseModel):
     """The investigator agent's required structured output (spec section
     6.2). This is the agent's write-up of an already-ranked diagnosis, not

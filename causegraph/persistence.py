@@ -1,4 +1,5 @@
-"""Incident / Hypothesis / Evidence / BenchmarkRun persistence.
+"""Incident / Hypothesis / Evidence / BenchmarkRun / RemediationProposal
+persistence.
 
 Thin repositories over causegraph.db, converting to/from the Pydantic
 schemas in causegraph.schemas so callers (API, benchmark evaluator) never
@@ -7,8 +8,15 @@ touch SQLAlchemy rows directly.
 
 from __future__ import annotations
 
-from causegraph.db import BenchmarkRunRow, EvidenceRow, HypothesisRow, IncidentRow, session_scope
-from causegraph.schemas import BenchmarkRun, Evidence, Hypothesis, Incident
+from causegraph.db import (
+    BenchmarkRunRow,
+    EvidenceRow,
+    HypothesisRow,
+    IncidentRow,
+    RemediationProposalRow,
+    session_scope,
+)
+from causegraph.schemas import BenchmarkRun, Evidence, Hypothesis, Incident, RemediationProposal
 
 
 class IncidentRepository:
@@ -201,3 +209,86 @@ class BenchmarkRunRepository:
                 finished_at=row.finished_at,
                 metrics=row.metrics or {},
             )
+
+
+class RemediationProposalRepository:
+    def create(self, proposal: RemediationProposal) -> RemediationProposal:
+        with session_scope() as session:
+            session.add(self._to_row(proposal))
+        return proposal
+
+    def get(self, proposal_id: str) -> RemediationProposal | None:
+        with session_scope() as session:
+            row = session.get(RemediationProposalRow, proposal_id)
+            return self._to_model(row) if row is not None else None
+
+    def get_by_idempotency_key(self, idempotency_key: str) -> RemediationProposal | None:
+        with session_scope() as session:
+            row = (
+                session.query(RemediationProposalRow)
+                .filter(RemediationProposalRow.idempotency_key == idempotency_key)
+                .first()
+            )
+            return self._to_model(row) if row is not None else None
+
+    def save(self, proposal: RemediationProposal) -> RemediationProposal:
+        """Full overwrite of an existing row -- the executor mutates a
+        RemediationProposal in place through its lifecycle (approve ->
+        execute -> maybe rollback) and persists the whole thing each time,
+        audit_log included."""
+        with session_scope() as session:
+            row = session.get(RemediationProposalRow, proposal.id)
+            if row is None:
+                session.add(self._to_row(proposal))
+                return proposal
+            row.status = proposal.status.value
+            row.approved_by = proposal.approved_by
+            row.approved_at = proposal.approved_at
+            row.executed_at = proposal.executed_at
+            row.rolled_back_at = proposal.rolled_back_at
+            row.precondition_results = proposal.precondition_results
+            row.post_action_health = proposal.post_action_health
+            row.audit_log = proposal.audit_log
+        return proposal
+
+    @staticmethod
+    def _to_row(proposal: RemediationProposal) -> RemediationProposalRow:
+        return RemediationProposalRow(
+            id=proposal.id,
+            incident_id=proposal.incident_id,
+            action_type=proposal.action_type,
+            target=proposal.target,
+            risk_tier=proposal.risk_tier.value,
+            status=proposal.status.value,
+            idempotency_key=proposal.idempotency_key,
+            reason=proposal.reason,
+            proposed_at=proposal.proposed_at,
+            approved_by=proposal.approved_by,
+            approved_at=proposal.approved_at,
+            executed_at=proposal.executed_at,
+            rolled_back_at=proposal.rolled_back_at,
+            precondition_results=proposal.precondition_results,
+            post_action_health=proposal.post_action_health,
+            audit_log=proposal.audit_log,
+        )
+
+    @staticmethod
+    def _to_model(row: RemediationProposalRow) -> RemediationProposal:
+        return RemediationProposal(
+            id=row.id,
+            incident_id=row.incident_id,
+            action_type=row.action_type,
+            target=row.target,
+            risk_tier=row.risk_tier,
+            status=row.status,
+            idempotency_key=row.idempotency_key,
+            reason=row.reason,
+            proposed_at=row.proposed_at,
+            approved_by=row.approved_by,
+            approved_at=row.approved_at,
+            executed_at=row.executed_at,
+            rolled_back_at=row.rolled_back_at,
+            precondition_results=row.precondition_results or {},
+            post_action_health=row.post_action_health or {},
+            audit_log=row.audit_log or [],
+        )

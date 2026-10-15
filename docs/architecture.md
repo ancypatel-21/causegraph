@@ -1,4 +1,4 @@
-# Architecture (through Phase 9)
+# Architecture (through Phase 10)
 
 ## Reference application
 
@@ -232,12 +232,62 @@ honest limitation the ablations surfaced (the X contradicting-evidence
 term actively fights the change-event term on quiet-root-cause
 scenarios), not just the wins.
 
+## Policy-gated remediation (Phase 10)
+
+`causegraph/remediation/` implements spec sections 10-11: "The LLM
+proposes a typed action; a deterministic policy engine decides whether
+it is allowed and whether human approval is required." The full
+lifecycle (`POST /remediation/proposals` → `.../approve` →
+`.../execute`, plus `.../rollback`) is wired into `causegraph-api` and
+verified live against the real stack, not just unit-tested.
+
+- **`policy.py`**'s `ALLOWED_ACTIONS` is a fixed allow-list of
+  `(action_type, target)` pairs, each with a risk tier (spec section
+  11's three tiers) and hard-coded fix/undo payloads — never built from
+  free-form text. Every `action_type` is one of the scenario `cleanup`
+  values already defined in `benchmark/scenarios/*.yaml`: remediation is
+  literally "undo the fault," the same mechanism the benchmark harness
+  uses for cleanup, now gated by policy instead of running
+  unconditionally.
+- **HIGH-risk actions are denied in code, not just in docs.** A
+  `drop_database` entry exists in the allow-list specifically so there's
+  something concrete for the policy engine to reject — verified live:
+  proposing it returns `status: rejected`, `reason: "high-risk actions
+  are disallowed in this project"`.
+- **MEDIUM-risk actions require approval**, enforced at execution time
+  (`RemediationExecutor.execute` raises `RemediationError` if a
+  medium-risk proposal isn't `APPROVED` yet) — verified live: executing
+  before approval returns HTTP 409.
+- **LOW-risk actions may execute without approval** (`resume_consumer`
+  on `event-stream`), per spec section 11's tier table.
+- **Idempotency key** = a hash of `(incident_id, action_type, target)`.
+  Calling `propose` twice returns the same proposal; calling `execute`
+  twice only calls the real endpoint once — verified live via
+  `feature-worker`'s logs showing exactly one `schema fault set to
+  False` after two `execute` calls.
+- **Every executable action has a working rollback.** Verified live:
+  after executing `restore_schema` (which calls
+  `POST /admin/fault/schema {enabled: false}`), rolling back calls
+  `{enabled: true}` and `feature-worker`'s logs confirm the fault came
+  back.
+- **`causegraph/remediation/executor.py` is the only module in the
+  project that calls a service's admin endpoint from production code**
+  (`causegraph-api`), as distinct from the benchmark harness's fault
+  injectors (`benchmark/injectors/`) — mechanically similar calls, but
+  one creates ground-truth incidents for the benchmark and the other
+  executes a policy-approved fix against a real diagnosed incident.
+- The investigator agent's `recommended_action` now names a real,
+  allow-listed `action_type` (via `incident.trigger_signal` →
+  `FAULT_TO_ACTION_TYPE`) instead of a generic placeholder — but
+  recommending is all it does; `needs_human_approval` is still always
+  `true`, and whether the action is actually allowed is decided by
+  `PolicyEngine.evaluate` at execution time, never by the agent.
+
 ## What's not built yet (by design)
 
 | Deferred to | What |
 |---|---|
 | Phase 9 (further) | Weight tuning (needs more scenarios first — see research-protocol.md), confidence intervals over repeated runs, path-accuracy scoring |
-| Phase 10 | Policy-gated remediation |
 | Phase 9+ | Dashboard / UI |
 
 See spec section 13 for the full roadmap and section 13.1 for the MVP cut
