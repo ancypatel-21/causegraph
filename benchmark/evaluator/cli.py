@@ -71,6 +71,24 @@ def compare_methods_cmd(
         )
 
 
+@app.command("run-ablations")
+def run_ablations_cmd(
+    scenario_id: str,
+    events_per_second: float = typer.Option(10.0, help="synthetic workload rate"),
+) -> None:
+    from benchmark.evaluator.evaluator import run_ablations
+
+    results = run_ablations(scenario_id, events_per_second=events_per_second)
+
+    typer.echo(f"{'ablation':<38} {'top1':<6} {'top3':<6} {'mrr':<6} {'rank':<6} ranked_candidates")
+    for label, run in results.items():
+        m = run.metrics
+        typer.echo(
+            f"{label:<38} {str(m['top1_accuracy']):<6} {str(m['top3_accuracy']):<6} "
+            f"{m['mrr']:<6.2f} {str(m['rank_of_ground_truth']):<6} {m['ranked_candidates']}"
+        )
+
+
 def main() -> None:
     app()
 

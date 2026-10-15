@@ -8,3 +8,4 @@ expected_path: [event-stream, feature-worker, feature-store, model-service]
 cleanup: resume_consumer
 severity: medium
 labels: [streaming, queue, cascading]
+split: dev

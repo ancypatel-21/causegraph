@@ -1,0 +1,11 @@
+id: redis-unavailable-001
+seed: 42
+root_cause: feature-store
+fault: redis_unavailable
+inject_at_seconds: 45
+symptom_nodes: [model-service, ranking-api, quality-monitor]
+expected_path: [feature-store, model-service, ranking-api]
+cleanup: restore_redis
+severity: high
+labels: [infrastructure, database, connection-exhaustion]
+split: held_out

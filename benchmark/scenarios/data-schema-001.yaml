@@ -8,3 +8,4 @@ expected_path: [feature-worker, feature-store, model-service, ranking-api]
 cleanup: restore_schema
 severity: medium
 labels: [data, schema, cascading]
+split: dev

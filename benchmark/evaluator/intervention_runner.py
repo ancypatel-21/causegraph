@@ -12,7 +12,7 @@ import asyncio
 
 from causegraph.anomalies.prometheus_client import PrometheusClient
 from causegraph.causal import InterventionResult, measure_intervention_effect
-from causegraph.graph.topology import EVENT_STREAM, FEATURE_WORKER, MODEL_SERVICE
+from causegraph.graph.topology import EVENT_STREAM, FEATURE_STORE, FEATURE_WORKER, MODEL_SERVICE
 from causegraph.rca.node_signals import NODE_SIGNALS
 from causegraph.schemas import Evidence, Incident
 from causegraph.telemetry import get_logger
@@ -30,6 +30,8 @@ FAULT_OWNER_NODE: dict[str, str] = {
     "incompatible_schema": FEATURE_WORKER,
     "latency": MODEL_SERVICE,
     "consumer_lag": EVENT_STREAM,
+    "cache_ttl_regression": FEATURE_WORKER,
+    "redis_unavailable": FEATURE_STORE,
 }
 
 

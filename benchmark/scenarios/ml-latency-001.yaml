@@ -8,3 +8,4 @@ expected_path: [model-service, ranking-api]
 cleanup: restore_latency
 severity: medium
 labels: [ml, latency]
+split: dev

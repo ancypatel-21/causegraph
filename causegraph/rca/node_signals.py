@@ -1,11 +1,12 @@
 """Maps a graph node to the Prometheus query that carries its health signal.
 
-Sprint 1 only wires up signals for nodes that a real service emits telemetry
-for. Infrastructure nodes without their own process (feature-store,
-engagement-feature, ranking-model, ranking-model-v1) have no entry and are
-scored as "no data" by the anomaly detector -- they can still be traversed
-as part of a causal path, they just never win on anomaly evidence alone
-until later phases add richer signals for them.
+Only nodes a real service emits telemetry for have an entry.
+`engagement-feature`, `ranking-model`, and `ranking-model-v1` have no
+process of their own and are scored as "no data" by the anomaly detector
+-- they can still be traversed as part of a causal path, they just never
+win on anomaly evidence alone. `feature-store` is attributed to
+model-service's view of it (the reader noticing the datastore degrade),
+since Redis itself has no telemetry we scrape.
 """
 
 from __future__ import annotations
@@ -43,5 +44,8 @@ NODE_SIGNALS: dict[str, NodeSignal] = {
     ),
     t.QUALITY_MONITOR: NodeSignal(
         _domain("quality-monitor", "quality_proxy_score"), "drop", "quality_drop"
+    ),
+    t.FEATURE_STORE: NodeSignal(
+        _domain("model-service", "feature_store_error_rate"), "spike", "feature_store_error_rate"
     ),
 }

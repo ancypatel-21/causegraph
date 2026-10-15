@@ -2,6 +2,7 @@ from datetime import datetime
 
 from causegraph.graph import build_reference_topology
 from causegraph.graph.topology import EVENT_STREAM, FEATURE_WORKER, MODEL_SERVICE
+from causegraph.rca.node_signals import NODE_SIGNALS
 from causegraph.schemas import Incident
 
 from benchmark.baselines.random_baseline import RandomBaseline
@@ -37,14 +38,19 @@ def test_random_baseline_covers_all_graph_nodes_as_eligible():
 
 
 class FakePrometheusClient:
+    """Keyed by node id, not raw query string -- resolves which node a
+    query belongs to via NODE_SIGNALS (exact match) rather than naive
+    substring containment, which breaks now that feature-store's query
+    string contains "model-service" as a substring (it's attributed to
+    model-service's view of it -- see causegraph/rca/node_signals.py)."""
+
     def __init__(self, values: dict[str, float]) -> None:
         self.values = values
+        self._query_to_node = {signal.query: node_id for node_id, signal in NODE_SIGNALS.items()}
 
     def query(self, promql: str) -> float | None:
-        for node_id, value in self.values.items():
-            if node_id in promql:
-                return value
-        return None
+        node_id = self._query_to_node.get(promql)
+        return self.values.get(node_id) if node_id else None
 
     def query_range(self, *args, **kwargs):
         raise NotImplementedError

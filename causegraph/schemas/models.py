@@ -124,6 +124,10 @@ class Scenario(BaseModel):
     cleanup: str
     severity: str
     labels: list[str] = Field(default_factory=list)
+    # Not in the spec's literal manifest schema (section 8.1) -- added for
+    # the dev/held-out discipline in spec section 9.4. Defaults to "dev" so
+    # existing manifests need no forced migration.
+    split: str = "dev"
 
 
 class BenchmarkRun(BaseModel):

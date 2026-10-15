@@ -21,7 +21,7 @@ from causegraph.persistence import (
     HypothesisRepository,
     IncidentRepository,
 )
-from causegraph.rca import CauseGraphMethod
+from causegraph.rca import ALL_TERMS, CauseGraphMethod
 from causegraph.schemas import BenchmarkRun, Incident, Scenario
 from causegraph.telemetry import get_logger
 
@@ -87,7 +87,14 @@ async def _run_scenario_async(
     scenario_id: str,
     method: str = "graph_only",
     events_per_second: float = 10.0,
+    method_override: object | None = None,
 ) -> BenchmarkRun:
+    """`method` is always the label used for persistence (BenchmarkRun.method,
+    result filename). `method_override`, if given, is used as the actual
+    RCA method instance instead of looking `method` up in the registry --
+    this is how ablation variants (spec section 9.2) run the exact same
+    incident lifecycle as every other method without a separate code path.
+    """
     scenario = load_scenario(scenario_id)
     started_at = datetime.now(timezone.utc)
     logger.info(f"starting benchmark run for scenario={scenario_id} method={method}")
@@ -115,7 +122,7 @@ async def _run_scenario_async(
     IncidentRepository().create(incident)
 
     graph = build_reference_topology()
-    rca_method = get_method(method, graph)
+    rca_method = method_override if method_override is not None else get_method(method, graph)
 
     intervention_scores: dict[str, float] = {}
     intervention_evidence: list = []
@@ -193,9 +200,14 @@ async def _run_scenario_async(
 
 
 def run_scenario(
-    scenario_id: str, method: str = "graph_only", events_per_second: float = 10.0
+    scenario_id: str,
+    method: str = "graph_only",
+    events_per_second: float = 10.0,
+    method_override: object | None = None,
 ) -> BenchmarkRun:
-    return asyncio.run(_run_scenario_async(scenario_id, method, events_per_second))
+    return asyncio.run(
+        _run_scenario_async(scenario_id, method, events_per_second, method_override)
+    )
 
 
 def compare_methods(
@@ -212,3 +224,35 @@ def compare_methods(
         logger.info(f"comparing methods: running '{method}' on scenario={scenario_id}")
         runs.append(run_scenario(scenario_id, method=method, events_per_second=events_per_second))
     return runs
+
+
+# The four evidence-ablations spec section 9.2 asks for explicitly.
+# "CauseGraph without LLM synthesis" isn't here -- that's just
+# ENABLE_AGENT_SYNTHESIS=0 vs =1 on a plain `causegraph` run, since LLM
+# synthesis was never part of CauseGraphMethod's own scoring to begin
+# with (see docs/architecture.md's Phase 8 section). "Vary graph
+# traversal depth and candidate budget" is `depth`/`top_k` on any
+# `causegraph` run, already parameterized, not a separate ablation here.
+ABLATIONS: dict[str, frozenset[str]] = {
+    "causegraph_full": ALL_TERMS,
+    "causegraph_no_change_events": ALL_TERMS - {"C"},
+    "causegraph_no_temporal_ordering": ALL_TERMS - {"T"},
+    "causegraph_no_propagation_consistency": ALL_TERMS - {"P"},
+    "causegraph_no_intervention_evidence": ALL_TERMS - {"I"},
+}
+
+
+def run_ablations(scenario_id: str, events_per_second: float = 10.0) -> dict[str, BenchmarkRun]:
+    """Run every ablation in `ABLATIONS` against the same scenario, one
+    independent fault-injection replay each (spec section 9.2)."""
+    results: dict[str, BenchmarkRun] = {}
+    for label, enabled_terms in ABLATIONS.items():
+        logger.info(f"ablation: running '{label}' on scenario={scenario_id}")
+        method = CauseGraphMethod(build_reference_topology(), enabled_terms=enabled_terms)
+        results[label] = run_scenario(
+            scenario_id,
+            method=label,
+            events_per_second=events_per_second,
+            method_override=method,
+        )
+    return results

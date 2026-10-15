@@ -71,17 +71,45 @@ fault-injection replay per method, so each gets its own real telemetry)
 and prints a comparison table. Use `--methods graph_only,causegraph` to
 run a subset. See `docs/architecture.md` for a sample result.
 
+## Ablation studies (spec section 9.2)
+
+```bash
+docker compose -f infra/compose/docker-compose.yml run --rm benchmark-cli \
+  run-ablations cache-ttl-001
+```
+
+Runs `causegraph_full` plus the four term-ablations spec section 9.2 asks
+for by name (`causegraph_no_change_events`, `_no_temporal_ordering`,
+`_no_propagation_consistency`, `_no_intervention_evidence`) against the
+same scenario — each is just `CauseGraphMethod` constructed with a
+different `enabled_terms` set (`causegraph/rca/causegraph_method.py`), no
+separate code path. "Without LLM synthesis" is just
+`ENABLE_AGENT_SYNTHESIS=0` vs `=1` on a plain run; "vary traversal depth
+and candidate budget" is the existing `depth`/`top_k` parameters — neither
+needed a new mechanism. See `docs/research-protocol.md` for real results
+and what they show.
+
 ## Scenarios
 
-| id | fault | root cause | owner service |
-|---|---|---|---|
-| `data-schema-001` | `incompatible_schema` | `feature-worker` | feature-worker |
-| `ml-latency-001` | `latency` | `model-service` | model-service |
-| `stream-lag-001` | `consumer_lag` | `event-stream` | feature-worker (pauses its own consumer) |
+| id | fault | root cause | owner service | split |
+|---|---|---|---|---|
+| `data-schema-001` | `incompatible_schema` | `feature-worker` | feature-worker | dev |
+| `ml-latency-001` | `latency` | `model-service` | model-service | dev |
+| `stream-lag-001` | `consumer_lag` | `event-stream` | feature-worker (pauses its own consumer) | dev |
+| `cache-ttl-001` | `cache_ttl_regression` | `feature-worker` | feature-worker | held_out |
+| `redis-unavailable-001` | `redis_unavailable` | `feature-store` | model-service (the reader that fails) | held_out |
+
+`cache-ttl-001` is deliberately a **quiet root cause**: the TTL change
+means feature-worker keeps writing valid data, so its own anomaly signal
+never fires — the only evidence pointing at it is the recorded change
+event. `redis-unavailable-001` gives `feature-store` its first-ever
+ground-truth role, exercising a node that previously only ever appeared
+as an intermediate hop. Both were genuinely held out: not looked at until
+the Phase 9 evaluation run documented in `docs/research-protocol.md`.
 
 Each manifest (`benchmark/scenarios/*.yaml`) declares `expected_path` — the
 causal chain from root cause to symptom — used for qualitative comparison,
-not currently scored directly (path-accuracy scoring is a Phase 9
+not currently scored directly (path-accuracy scoring is a possible future
 evaluation addition).
 
 ## Adding a scenario
@@ -94,9 +122,14 @@ exist, and make sure the owning service exposes the matching
 in place — bump its `id` instead, per
 `docs/adr/0004-benchmark-artifact-format.md`.
 
-## Growing past Sprint 1
+## Growing past 5 scenarios
 
-Sprint 1 ships exactly three scenarios (spec section 21, step 43). The
-full benchmark (spec section 8) calls for starting at 20 high-quality
-scenarios and growing toward 50-100 once the harness is stable — that's
-Phase 4 work, not Sprint 1.
+Sprint 1 shipped exactly three scenarios (spec section 21, step 43); Phase
+9 added two more with genuinely new fault mechanisms (not superficial
+variants of the first three) and a `split` field. The full benchmark
+(spec section 8) calls for starting at 20 high-quality scenarios and
+growing toward 50-100 once the harness is stable — 5 is an honest, modest
+step in that direction, not a claim of having reached it. Growing further
+means adding real new fault mechanisms (infra/network/cascading
+categories from spec section 8 are still unrepresented), not duplicating
+existing ones with different numbers.

@@ -1,7 +1,8 @@
 """feature-worker: consumes interaction events, computes a feature per
 item, and writes it to the feature-store (Redis). Owns the
-`incompatible_schema` fault used by scenario data-schema-001. See
-docs/adr/0001-service-boundaries.md and benchmark/scenarios/data-schema-001.yaml.
+`incompatible_schema` fault (data-schema-001), the `consumer_lag` fault
+(stream-lag-001), and the `cache_ttl_regression` fault (cache-ttl-001).
+See docs/adr/0001-service-boundaries.md and benchmark/scenarios/*.yaml.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ TOPIC = os.environ.get("KAFKA_INTERACTION_TOPIC", "interaction-events")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CAUSEGRAPH_API_URL = os.environ.get("CAUSEGRAPH_API_URL", "http://localhost:8000")
 FEATURE_TTL_SECONDS = 300
+REGRESSED_TTL_SECONDS = 1  # short enough that most reads miss before the next write
 
 logger = get_logger(SERVICE_NAME)
 metrics = ServiceMetrics(SERVICE_NAME)
@@ -38,6 +40,7 @@ null_feature_rate = RollingRate(window_seconds=30.0)
 class FaultState:
     schema_broken: bool = False
     lag_paused: bool = False
+    ttl_regressed: bool = False
 
 
 fault_state = FaultState()
@@ -94,8 +97,9 @@ async def _process_message(raw: bytes) -> None:
 
     metrics.set_signal("null_feature_rate", null_feature_rate.rate())
 
+    ttl = REGRESSED_TTL_SECONDS if fault_state.ttl_regressed else FEATURE_TTL_SECONDS
     if redis_client is not None:
-        await redis_client.set(f"feature:{item_id}", json.dumps(feature_value), ex=FEATURE_TTL_SECONDS)
+        await redis_client.set(f"feature:{item_id}", json.dumps(feature_value), ex=ttl)
 
 
 async def _lag_reporter_loop() -> None:
@@ -175,3 +179,26 @@ async def set_lag_fault(payload: LagFaultRequest) -> dict[str, bool]:
     )
     logger.info(f"lag fault set to {payload.enabled}")
     return {"lag_paused": fault_state.lag_paused}
+
+
+class TtlFaultRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/admin/fault/ttl")
+async def set_ttl_fault(payload: TtlFaultRequest) -> dict[str, bool]:
+    # Unlike the schema fault, this never touches event parsing -- writes
+    # still succeed with valid data, so null_feature_rate stays quiet.
+    # Only the TTL changes, so the symptom only shows up downstream once
+    # keys expire before being read. See benchmark/scenarios/cache-ttl-001.yaml.
+    fault_state.ttl_regressed = payload.enabled
+    await record_change_event(
+        CAUSEGRAPH_API_URL,
+        node_id=SERVICE_NAME,
+        change_type="config",
+        version_before=str(FEATURE_TTL_SECONDS) if payload.enabled else str(REGRESSED_TTL_SECONDS),
+        version_after=str(REGRESSED_TTL_SECONDS) if payload.enabled else str(FEATURE_TTL_SECONDS),
+        metadata={"fault": "cache_ttl_regression", "enabled": payload.enabled},
+    )
+    logger.info(f"ttl regression fault set to {payload.enabled}")
+    return {"ttl_regressed": fault_state.ttl_regressed}

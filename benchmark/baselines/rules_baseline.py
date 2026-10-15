@@ -15,7 +15,14 @@ from dataclasses import dataclass
 
 from causegraph.anomalies.prometheus_client import PrometheusClient
 from causegraph.graph.repository import GraphRepository
-from causegraph.graph.topology import EVENT_API, EVENT_STREAM, FEATURE_WORKER, MODEL_SERVICE, RANKING_API
+from causegraph.graph.topology import (
+    EVENT_API,
+    EVENT_STREAM,
+    FEATURE_STORE,
+    FEATURE_WORKER,
+    MODEL_SERVICE,
+    RANKING_API,
+)
 from causegraph.rca.node_signals import NODE_SIGNALS
 from causegraph.schemas import Hypothesis, Incident
 
@@ -32,11 +39,16 @@ class Rule:
 # model-service is slow, since ranking-api awaits its response).
 RULES: list[Rule] = [
     Rule(FEATURE_WORKER, threshold=0.3),
+    Rule(FEATURE_STORE, threshold=0.3),
     Rule(MODEL_SERVICE, threshold=400.0),
     Rule(EVENT_STREAM, threshold=20.0),
     Rule(EVENT_API, threshold=0.3),
     Rule(RANKING_API, threshold=400.0),
 ]
+# Deliberately NOT here: cache_ttl_regression has no signature of its own
+# in this table (it manifests as a quiet feature-worker, not a tripped
+# threshold) -- this is the brittleness spec section 2.1 describes, shown
+# rather than just claimed. See benchmark/scenarios/cache-ttl-001.yaml.
 
 
 class RulesBaseline:

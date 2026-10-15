@@ -1,0 +1,11 @@
+id: cache-ttl-001
+seed: 42
+root_cause: feature-worker
+fault: cache_ttl_regression
+inject_at_seconds: 45
+symptom_nodes: [model-service, ranking-api, quality-monitor]
+expected_path: [feature-worker, feature-store, model-service, ranking-api]
+cleanup: restore_ttl
+severity: medium
+labels: [configuration, cache, quiet-root-cause]
+split: held_out

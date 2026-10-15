@@ -1,4 +1,4 @@
-# Architecture (through Phase 8)
+# Architecture (through Phase 9)
 
 ## Reference application
 
@@ -213,11 +213,30 @@ truth" — demonstrated, not just stated: the benchmark's accuracy metrics
 are computed from `CauseGraphMethod`'s score alone, never from the
 agent's pick.
 
+## Held-out evaluation and ablations (Phase 9)
+
+Grew from 3 to 5 scenarios with two genuinely new fault mechanisms (not
+superficial variants): `cache-ttl-001` (a deliberately **quiet root
+cause** — feature-worker keeps writing valid data, only the TTL
+regresses, so its own anomaly signal never fires) and
+`redis-unavailable-001` (gives `feature-store` its first-ever
+ground-truth role). `Scenario.split` (`dev`/`held_out`) tags all five;
+the two new ones were labeled `held_out` and never looked at before
+being run. `benchmark/evaluator/evaluator.py:run_ablations` runs the four
+term-ablations spec section 9.2 names, plus the full model, through the
+same evaluator as everything else.
+
+Real results, including a case where CauseGraph wins and a case where
+nothing gets top-1, are in `docs/research-protocol.md` — including an
+honest limitation the ablations surfaced (the X contradicting-evidence
+term actively fights the change-event term on quiet-root-cause
+scenarios), not just the wins.
+
 ## What's not built yet (by design)
 
 | Deferred to | What |
 |---|---|
-| Phase 9 | Held-out evaluation, ablation experiments actually run and reported, growing past 3 scenarios |
+| Phase 9 (further) | Weight tuning (needs more scenarios first — see research-protocol.md), confidence intervals over repeated runs, path-accuracy scoring |
 | Phase 10 | Policy-gated remediation |
 | Phase 9+ | Dashboard / UI |
 
